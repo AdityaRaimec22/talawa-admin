@@ -1,6 +1,7 @@
 import sys
 import argparse
 import subprocess
+import shlex
 import glob
 
 
@@ -18,14 +19,12 @@ def _get_changed_files(base_branch, pr_branch):
     base_branch = f"origin/{base_branch}"
     pr_branch = f"origin/{pr_branch}"
 
-    command = f"git diff --name-only {base_branch}..{pr_branch} --diff-filter=ACMRT | xargs "
-
+    command = f"git diff --name-only {base_branch}..{pr_branch} --diff-filter=ACMRT"
 
     try:
         # Run git command to get the list of changed files
         process = subprocess.Popen(
-            command,
-            shell=True,
+            shlex.split(command),
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
             text=True,
@@ -37,7 +36,7 @@ def _get_changed_files(base_branch, pr_branch):
         print(f"Error: {e}")
         sys.exit(1)
 
-    changed_files = [file.strip() for file in output.split(" ") if file.strip()]
+    changed_files = [file.strip() for file in output.splitlines() if file.strip()]
     return changed_files
 
 
