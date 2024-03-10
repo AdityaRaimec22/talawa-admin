@@ -82,7 +82,7 @@ jobs:
 
       - name: Run Python script
         run: |
-          git diff origin/myNewBranch
+          git diff origin/myNewBranch --
 
   Check-ESlint-Disable:
     name: Check for eslint-disable
