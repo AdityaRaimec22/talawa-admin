@@ -23,8 +23,6 @@ export const TableRow = ({
       variables: {
         userId: data.userId,
         eventId: data.eventId,
-        allotedSeat: '',
-        allotedRoom: '',
       },
     })
       .then(() => {
