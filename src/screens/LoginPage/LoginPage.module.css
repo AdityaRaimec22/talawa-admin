@@ -2,12 +2,20 @@
   min-height: 100vh;
 }
 
+.communityLogo {
+  object-fit: contain;
+}
+
 .row .left_portion {
   display: flex;
   justify-content: center;
   align-items: center;
   flex-direction: column;
   height: 100vh;
+}
+
+.selectOrgText input {
+  outline: none !important;
 }
 
 .row .left_portion .inner .palisadoes_logo {

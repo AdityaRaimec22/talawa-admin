@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import Button from 'react-bootstrap/Button';
 import Modal from 'react-bootstrap/Modal';
-import { Form } from 'react-bootstrap';
+import { Form, Popover } from 'react-bootstrap';
 import { useMutation, useQuery } from '@apollo/client';
 import { toast } from 'react-toastify';
 import { useTranslation } from 'react-i18next';
@@ -19,11 +19,26 @@ import { errorHandler } from 'utils/errorHandler';
 import Loader from 'components/Loader/Loader';
 import useLocalStorage from 'utils/useLocalstorage';
 import { useParams, useNavigate } from 'react-router-dom';
+import EventHeader from 'components/EventCalendar/EventHeader';
+import {
+  Frequency,
+  Days,
+  getRecurrenceRuleText,
+  getWeekDayOccurenceInMonth,
+} from 'utils/recurrenceUtils';
+import type { InterfaceRecurrenceRuleState } from 'utils/recurrenceUtils';
+import RecurrenceOptions from 'components/RecurrenceOptions/RecurrenceOptions';
 
 const timeToDayJs = (time: string): Dayjs => {
   const dateTimeString = dayjs().format('YYYY-MM-DD') + ' ' + time;
   return dayjs(dateTimeString, { format: 'YYYY-MM-DD HH:mm:ss' });
 };
+
+export enum ViewType {
+  DAY = 'Day',
+  MONTH = 'Month View',
+  YEAR = 'Year View',
+}
 
 function organizationEvents(): JSX.Element {
   const { t } = useTranslation('translation', {
@@ -33,16 +48,26 @@ function organizationEvents(): JSX.Element {
   const { getItem } = useLocalStorage();
 
   document.title = t('title');
-  const [eventmodalisOpen, setEventModalIsOpen] = useState(false);
-
-  const [startDate, setStartDate] = React.useState<Date | null>(new Date());
-  const [endDate, setEndDate] = React.useState<Date | null>(new Date());
-
+  const [createEventmodalisOpen, setCreateEventmodalisOpen] = useState(false);
+  const [startDate, setStartDate] = React.useState<Date>(new Date());
+  const [endDate, setEndDate] = React.useState<Date>(new Date());
+  const [viewType, setViewType] = useState<ViewType>(ViewType.MONTH);
   const [alldaychecked, setAllDayChecked] = React.useState(true);
   const [recurringchecked, setRecurringChecked] = React.useState(false);
 
   const [publicchecked, setPublicChecked] = React.useState(true);
   const [registrablechecked, setRegistrableChecked] = React.useState(false);
+
+  const [recurrenceRuleState, setRecurrenceRuleState] =
+    useState<InterfaceRecurrenceRuleState>({
+      recurrenceStartDate: startDate,
+      recurrenceEndDate: null,
+      frequency: Frequency.WEEKLY,
+      weekDays: [Days[startDate.getDay()]],
+      interval: 1,
+      count: undefined,
+      weekDayOccurenceInMonth: undefined,
+    });
 
   const [formState, setFormState] = useState({
     title: '',
@@ -56,32 +81,58 @@ function organizationEvents(): JSX.Element {
   const navigate = useNavigate();
 
   const showInviteModal = (): void => {
-    setEventModalIsOpen(true);
+    setCreateEventmodalisOpen(true);
   };
-  const hideInviteModal = (): void => {
-    setEventModalIsOpen(false);
+  const hideCreateEventModal = (): void => {
+    setCreateEventmodalisOpen(false);
+  };
+  const handleChangeView = (item: string | null): void => {
+    /*istanbul ignore next*/
+    if (item) {
+      setViewType(item as ViewType);
+    }
   };
 
-  const { data, loading, error, refetch } = useQuery(
-    ORGANIZATION_EVENT_CONNECTION_LIST,
-    {
-      variables: {
-        organization_id: currentUrl,
-        title_contains: '',
-        description_contains: '',
-        location_contains: '',
-      },
+  const {
+    data,
+    loading,
+    error: eventDataError,
+    refetch: refetchEvents,
+  } = useQuery(ORGANIZATION_EVENT_CONNECTION_LIST, {
+    variables: {
+      organization_id: currentUrl,
+      title_contains: '',
+      description_contains: '',
+      location_contains: '',
     },
-  );
+  });
 
   const { data: orgData } = useQuery(ORGANIZATIONS_LIST, {
     variables: { id: currentUrl },
   });
 
   const userId = getItem('id') as string;
-  const userRole = getItem('UserType') as string;
+  const superAdmin = getItem('SuperAdmin');
+  const adminFor = getItem('AdminFor');
+  const userRole = superAdmin
+    ? 'SUPERADMIN'
+    : adminFor?.length > 0
+      ? 'ADMIN'
+      : 'USER';
 
   const [create, { loading: loading2 }] = useMutation(CREATE_EVENT_MUTATION);
+
+  const {
+    recurrenceStartDate,
+    recurrenceEndDate,
+    frequency,
+    weekDays,
+    interval,
+    count,
+    weekDayOccurenceInMonth,
+  } = recurrenceRuleState;
+
+  const recurrenceRuleText = getRecurrenceRuleText(recurrenceRuleState);
 
   const createEvent = async (
     e: React.ChangeEvent<HTMLFormElement>,
@@ -105,16 +156,35 @@ function organizationEvents(): JSX.Element {
             endDate: dayjs(endDate).format('YYYY-MM-DD'),
             allDay: alldaychecked,
             location: formState.location,
-            startTime: !alldaychecked ? formState.startTime + 'Z' : null,
-            endTime: !alldaychecked ? formState.endTime + 'Z' : null,
+            startTime: !alldaychecked ? formState.startTime + 'Z' : undefined,
+            endTime: !alldaychecked ? formState.endTime + 'Z' : undefined,
+            recurrenceStartDate: recurringchecked
+              ? dayjs(recurrenceStartDate).format('YYYY-MM-DD')
+              : undefined,
+            recurrenceEndDate: recurringchecked
+              ? recurrenceEndDate
+                ? dayjs(recurrenceEndDate).format('YYYY-MM-DD')
+                : null
+              : undefined,
+            frequency: recurringchecked ? frequency : undefined,
+            weekDays:
+              recurringchecked &&
+              (frequency === Frequency.WEEKLY ||
+                (frequency === Frequency.MONTHLY && weekDayOccurenceInMonth))
+                ? weekDays
+                : undefined,
+            interval: recurringchecked ? interval : undefined,
+            count: recurringchecked ? count : undefined,
+            weekDayOccurenceInMonth: recurringchecked
+              ? weekDayOccurenceInMonth
+              : undefined,
           },
         });
 
-        /* istanbul ignore next */
         if (createEventData) {
           toast.success(t('eventCreated'));
-          refetch();
-          hideInviteModal();
+          refetchEvents();
+          hideCreateEventModal();
           setFormState({
             title: '',
             eventdescrip: '',
@@ -123,10 +193,25 @@ function organizationEvents(): JSX.Element {
             startTime: '08:00:00',
             endTime: '18:00:00',
           });
+          setRecurringChecked(false);
+          setRecurrenceRuleState({
+            recurrenceStartDate: new Date(),
+            recurrenceEndDate: null,
+            frequency: Frequency.WEEKLY,
+            weekDays: [Days[new Date().getDay()]],
+            interval: 1,
+            count: undefined,
+            weekDayOccurenceInMonth: undefined,
+          });
+          setStartDate(new Date());
+          setEndDate(new Date());
         }
-      } catch (error: any) {
+      } catch (error: unknown) {
         /* istanbul ignore next */
-        errorHandler(t, error);
+        if (error instanceof Error) {
+          console.log(error.message);
+          errorHandler(t, error);
+        }
       }
     }
     if (formState.title.trim().length === 0) {
@@ -141,43 +226,51 @@ function organizationEvents(): JSX.Element {
   };
 
   useEffect(() => {
-    if (error) {
+    if (eventDataError) {
       navigate('/orglist');
     }
-  }, [error]);
+  }, [eventDataError]);
 
   if (loading || loading2) {
     return <Loader />;
   }
 
+  const popover = (
+    <Popover
+      id={`popover-recurrenceRuleText`}
+      data-testid={`popover-recurrenceRuleText`}
+    >
+      <Popover.Body>{recurrenceRuleText}</Popover.Body>
+    </Popover>
+  );
+
   return (
     <>
       <div className={styles.mainpageright}>
         <div className={styles.justifysp}>
-          <p className={styles.logintitle}>{t('events')}</p>
-          <Button
-            variant="success"
-            className={styles.addbtn}
-            onClick={showInviteModal}
-            data-testid="createEventModalBtn"
-          >
-            <i className="fa fa-plus"></i> {t('addEvent')}
-          </Button>
+          <EventHeader
+            viewType={viewType}
+            handleChangeView={handleChangeView}
+            showInviteModal={showInviteModal}
+          />
         </div>
       </div>
       <EventCalendar
         eventData={data?.eventsByOrganizationConnection}
+        refetchEvents={refetchEvents}
         orgData={orgData}
         userRole={userRole}
         userId={userId}
+        viewType={viewType}
       />
 
-      <Modal show={eventmodalisOpen} onHide={hideInviteModal}>
+      {/* Create Event Modal */}
+      <Modal show={createEventmodalisOpen} onHide={hideCreateEventModal}>
         <Modal.Header>
           <p className={styles.titlemodal}>{t('eventDetails')}</p>
           <Button
             variant="danger"
-            onClick={hideInviteModal}
+            onClick={hideCreateEventModal}
             data-testid="createEventModalCloseBtn"
           >
             <i className="fa fa-times"></i>
@@ -240,9 +333,16 @@ function organizationEvents(): JSX.Element {
                     if (date) {
                       setStartDate(date?.toDate());
                       setEndDate(
-                        endDate &&
-                          (endDate < date?.toDate() ? date?.toDate() : endDate),
+                        endDate < date?.toDate() ? date?.toDate() : endDate,
                       );
+                      setRecurrenceRuleState({
+                        ...recurrenceRuleState,
+                        recurrenceStartDate: date?.toDate(),
+                        weekDays: [Days[date?.toDate().getDay()]],
+                        weekDayOccurenceInMonth: weekDayOccurenceInMonth
+                          ? getWeekDayOccurenceInMonth(date?.toDate())
+                          : undefined,
+                      });
                     }
                   }}
                 />
@@ -261,52 +361,59 @@ function organizationEvents(): JSX.Element {
                 />
               </div>
             </div>
-            <div className={styles.datediv}>
-              <div className="mr-3">
-                <TimePicker
-                  label={t('startTime')}
-                  className={styles.datebox}
-                  timeSteps={{ hours: 1, minutes: 1, seconds: 1 }}
-                  value={timeToDayJs(formState.startTime)}
-                  onChange={(time): void => {
-                    if (time) {
-                      setFormState({
-                        ...formState,
-                        startTime: time?.format('HH:mm:ss'),
-                        endTime:
-                          timeToDayJs(formState.endTime) < time
-                            ? time?.format('HH:mm:ss')
-                            : formState.endTime,
-                      });
-                    }
-                  }}
-                  disabled={alldaychecked}
-                />
+            {!alldaychecked && (
+              <div className={styles.datediv}>
+                <div className="mr-3">
+                  <TimePicker
+                    label={t('startTime')}
+                    className={styles.datebox}
+                    timeSteps={{ hours: 1, minutes: 1, seconds: 1 }}
+                    value={timeToDayJs(formState.startTime)}
+                    /*istanbul ignore next*/
+                    onChange={(time): void => {
+                      if (time) {
+                        setFormState({
+                          ...formState,
+                          startTime: time?.format('HH:mm:ss'),
+                          endTime:
+                            /*istanbul ignore next*/
+                            timeToDayJs(formState.endTime) < time
+                              ? /* istanbul ignore next */ time?.format(
+                                  'HH:mm:ss',
+                                )
+                              : formState.endTime,
+                        });
+                      }
+                    }}
+                    disabled={alldaychecked}
+                  />
+                </div>
+                <div>
+                  <TimePicker
+                    label={t('endTime')}
+                    className={styles.datebox}
+                    timeSteps={{ hours: 1, minutes: 1, seconds: 1 }}
+                    /*istanbul ignore next*/
+                    value={timeToDayJs(formState.endTime)}
+                    onChange={(time): void => {
+                      if (time) {
+                        setFormState({
+                          ...formState,
+                          endTime: time?.format('HH:mm:ss'),
+                        });
+                      }
+                    }}
+                    minTime={timeToDayJs(formState.startTime)}
+                    disabled={alldaychecked}
+                  />
+                </div>
               </div>
-              <div>
-                <TimePicker
-                  label={t('endTime')}
-                  className={styles.datebox}
-                  timeSteps={{ hours: 1, minutes: 1, seconds: 1 }}
-                  value={timeToDayJs(formState.endTime)}
-                  onChange={(time): void => {
-                    if (time) {
-                      setFormState({
-                        ...formState,
-                        endTime: time?.format('HH:mm:ss'),
-                      });
-                    }
-                  }}
-                  minTime={timeToDayJs(formState.startTime)}
-                  disabled={alldaychecked}
-                />
-              </div>
-            </div>
+            )}
             <div className={styles.checkboxdiv}>
               <div className={styles.dispflex}>
                 <label htmlFor="allday">{t('allDay')}?</label>
                 <Form.Switch
-                  className="ms-2 mt-3"
+                  className="me-4"
                   id="allday"
                   type="checkbox"
                   checked={alldaychecked}
@@ -315,22 +422,9 @@ function organizationEvents(): JSX.Element {
                 />
               </div>
               <div className={styles.dispflex}>
-                <label htmlFor="recurring">{t('recurringEvent')}:</label>
-                <Form.Switch
-                  className="ms-2 mt-3"
-                  id="recurring"
-                  type="checkbox"
-                  data-testid="recurringCheck"
-                  checked={recurringchecked}
-                  onChange={(): void => setRecurringChecked(!recurringchecked)}
-                />
-              </div>
-            </div>
-            <div className={styles.checkboxdiv}>
-              <div className={styles.dispflex}>
                 <label htmlFor="ispublic">{t('isPublic')}?</label>
                 <Form.Switch
-                  className="ms-2 mt-3"
+                  className="me-4"
                   id="ispublic"
                   type="checkbox"
                   data-testid="ispublicCheck"
@@ -338,10 +432,25 @@ function organizationEvents(): JSX.Element {
                   onChange={(): void => setPublicChecked(!publicchecked)}
                 />
               </div>
+            </div>
+            <div className={styles.checkboxdiv}>
+              <div className={styles.dispflex}>
+                <label htmlFor="recurring">{t('recurringEvent')}?</label>
+                <Form.Switch
+                  className="me-4"
+                  id="recurring"
+                  type="checkbox"
+                  data-testid="recurringCheck"
+                  checked={recurringchecked}
+                  onChange={(): void => {
+                    setRecurringChecked(!recurringchecked);
+                  }}
+                />
+              </div>
               <div className={styles.dispflex}>
                 <label htmlFor="registrable">{t('isRegistrable')}?</label>
                 <Form.Switch
-                  className="ms-2 mt-3"
+                  className="me-4"
                   id="registrable"
                   type="checkbox"
                   data-testid="registrableCheck"
@@ -352,6 +461,18 @@ function organizationEvents(): JSX.Element {
                 />
               </div>
             </div>
+
+            {/* Recurrence Options */}
+            {recurringchecked && (
+              <RecurrenceOptions
+                recurrenceRuleState={recurrenceRuleState}
+                recurrenceRuleText={recurrenceRuleText}
+                setRecurrenceRuleState={setRecurrenceRuleState}
+                popover={popover}
+                t={t}
+              />
+            )}
+
             <Button
               type="submit"
               className={styles.greenregbtn}

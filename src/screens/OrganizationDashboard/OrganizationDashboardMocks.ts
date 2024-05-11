@@ -48,6 +48,7 @@ export const MOCKS = [
                 firstName: 'John',
                 lastName: 'Doe',
                 email: 'johndoe@gmail.com',
+                createdAt: '12-03-2024',
               },
             ],
             membershipRequests: [
@@ -207,6 +208,24 @@ export const MOCKS = [
             endTime: '17:00:00',
             allDay: false,
             recurring: false,
+            recurrenceRule: null,
+            isRecurringEventException: false,
+            isPublic: true,
+            isRegisterable: true,
+          },
+          {
+            _id: '2',
+            title: 'Sample Event',
+            description: 'Sample Description',
+            startDate: '2022-10-29T00:00:00.000Z',
+            endDate: '2023-10-29T23:59:59.000Z',
+            location: 'Sample Location',
+            startTime: '08:00:00',
+            endTime: '17:00:00',
+            allDay: false,
+            recurring: false,
+            recurrenceRule: null,
+            isRecurringEventException: false,
             isPublic: true,
             isRegisterable: true,
           },
@@ -260,6 +279,7 @@ export const EMPTY_MOCKS = [
                 firstName: 'John',
                 lastName: 'Doe',
                 email: 'johndoe@gmail.com',
+                createdAt: '12-03-2024',
               },
             ],
             membershipRequests: [],
@@ -279,21 +299,24 @@ export const EMPTY_MOCKS = [
   {
     request: {
       query: ORGANIZATION_POST_LIST,
+      variables: { first: 10 },
     },
     result: {
       data: {
-        organizations: {
-          posts: {
-            edges: [],
-            pageInfo: {
-              startCursor: '',
-              endCursor: '',
-              hasNextPage: false,
-              hasPreviousPage: false,
+        organizations: [
+          {
+            posts: {
+              edges: [],
+              pageInfo: {
+                startCursor: '',
+                endCursor: '',
+                hasNextPage: false,
+                hasPreviousPage: false,
+              },
+              totalCount: 0,
             },
-            totalCount: 0,
           },
-        },
+        ],
       },
     },
   },

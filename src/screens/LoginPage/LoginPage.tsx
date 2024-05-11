@@ -1,4 +1,5 @@
-import { useMutation } from '@apollo/client';
+import { useQuery, useMutation } from '@apollo/client';
+import { Check, Clear } from '@mui/icons-material';
 import type { ChangeEvent } from 'react';
 import React, { useEffect, useState } from 'react';
 import { Form } from 'react-bootstrap';
@@ -9,28 +10,30 @@ import ReCAPTCHA from 'react-google-recaptcha';
 import { useTranslation } from 'react-i18next';
 import { Link, useNavigate } from 'react-router-dom';
 import { toast } from 'react-toastify';
-import { Check, Clear } from '@mui/icons-material';
 
+import EmailOutlinedIcon from '@mui/icons-material/EmailOutlined';
 import {
+  BACKEND_URL,
   REACT_APP_USE_RECAPTCHA,
   RECAPTCHA_SITE_KEY,
-  BACKEND_URL,
 } from 'Constant/constant';
 import {
   LOGIN_MUTATION,
   RECAPTCHA_MUTATION,
   SIGNUP_MUTATION,
 } from 'GraphQl/Mutations/mutations';
-import { ReactComponent as TalawaLogo } from 'assets/svgs/talawa.svg';
+import { GET_COMMUNITY_DATA, ORGANIZATION_LIST } from 'GraphQl/Queries/Queries';
 import { ReactComponent as PalisadoesLogo } from 'assets/svgs/palisadoes.svg';
+import { ReactComponent as TalawaLogo } from 'assets/svgs/talawa.svg';
 import ChangeLanguageDropDown from 'components/ChangeLanguageDropdown/ChangeLanguageDropDown';
-import LoginPortalToggle from 'components/LoginPortalToggle/LoginPortalToggle';
 import Loader from 'components/Loader/Loader';
+import LoginPortalToggle from 'components/LoginPortalToggle/LoginPortalToggle';
 import { errorHandler } from 'utils/errorHandler';
-import styles from './LoginPage.module.css';
-import EmailOutlinedIcon from '@mui/icons-material/EmailOutlined';
 import useLocalStorage from 'utils/useLocalstorage';
 import { socialMediaLinks } from '../../constants';
+import styles from './LoginPage.module.css';
+import type { InterfaceQueryOrganizationListObject } from 'utils/interfaces';
+import { Autocomplete, TextField } from '@mui/material';
 
 const loginPage = (): JSX.Element => {
   const { t } = useTranslation('translation', { keyPrefix: 'loginPage' });
@@ -46,6 +49,7 @@ const loginPage = (): JSX.Element => {
     numericValue: boolean;
     specialChar: boolean;
   };
+
   const [recaptchaToken, setRecaptchaToken] = useState<string | null>(null);
   const [showTab, setShowTab] = useState<'LOGIN' | 'REGISTER'>('LOGIN');
   const [role, setRole] = useState<'admin' | 'user'>('admin');
@@ -57,6 +61,7 @@ const loginPage = (): JSX.Element => {
     signEmail: '',
     signPassword: '',
     cPassword: '',
+    signOrg: '',
   });
   const [formState, setFormState] = useState({
     email: '',
@@ -71,6 +76,7 @@ const loginPage = (): JSX.Element => {
     numericValue: true,
     specialChar: true,
   });
+  const [organizations, setOrganizations] = useState([]);
 
   const passwordValidationRegExp = {
     lowercaseCharRegExp: new RegExp('[a-z]'),
@@ -95,9 +101,7 @@ const loginPage = (): JSX.Element => {
   useEffect(() => {
     const isLoggedIn = getItem('IsLoggedIn');
     if (isLoggedIn == 'TRUE') {
-      navigate(
-        getItem('UserType') === 'USER' ? '/user/organizations' : '/orglist',
-      );
+      navigate(getItem('userId') !== null ? '/user/organizations' : '/orglist');
     }
     setComponentLoader(false);
   }, []);
@@ -106,16 +110,40 @@ const loginPage = (): JSX.Element => {
   const toggleConfirmPassword = (): void =>
     setShowConfirmPassword(!showConfirmPassword);
 
+  const { data, loading, refetch } = useQuery(GET_COMMUNITY_DATA);
+  useEffect(() => {
+    // refetching the data if the pre-login data updates
+    refetch();
+  }, [data]);
   const [login, { loading: loginLoading }] = useMutation(LOGIN_MUTATION);
   const [signup, { loading: signinLoading }] = useMutation(SIGNUP_MUTATION);
   const [recaptcha, { loading: recaptchaLoading }] =
     useMutation(RECAPTCHA_MUTATION);
+  const { data: orgData } = useQuery(ORGANIZATION_LIST);
+
+  useEffect(() => {
+    if (orgData) {
+      const options = orgData.organizations.map(
+        (org: InterfaceQueryOrganizationListObject) => {
+          const tempObj: { label: string; id: string } | null = {} as {
+            label: string;
+            id: string;
+          };
+          tempObj['label'] =
+            `${org.name}(${org.address.city},${org.address.state},${org.address.countryCode})`;
+          tempObj['id'] = org._id;
+          return tempObj;
+        },
+      );
+      setOrganizations(options);
+    }
+  }, [orgData]);
 
   useEffect(() => {
     async function loadResource(): Promise<void> {
       try {
         await fetch(BACKEND_URL as string);
-      } catch (error: any) {
+      } catch (error) {
         /* istanbul ignore next */
         errorHandler(t, error);
       }
@@ -125,7 +153,7 @@ const loginPage = (): JSX.Element => {
   }, []);
 
   const verifyRecaptcha = async (
-    recaptchaToken: any,
+    recaptchaToken: string | null,
   ): Promise<boolean | void> => {
     try {
       /* istanbul ignore next */
@@ -139,7 +167,7 @@ const loginPage = (): JSX.Element => {
       });
 
       return data.recaptcha;
-    } catch (error: any) {
+    } catch (error) {
       /* istanbul ignore next */
       toast.error(t('captchaError'));
     }
@@ -152,8 +180,14 @@ const loginPage = (): JSX.Element => {
   const signupLink = async (e: ChangeEvent<HTMLFormElement>): Promise<void> => {
     e.preventDefault();
 
-    const { signfirstName, signlastName, signEmail, signPassword, cPassword } =
-      signformState;
+    const {
+      signfirstName,
+      signlastName,
+      signEmail,
+      signPassword,
+      cPassword,
+      signOrg,
+    } = signformState;
 
     const isVerified = await verifyRecaptcha(recaptchaToken);
     /* istanbul ignore next */
@@ -192,15 +226,14 @@ const loginPage = (): JSX.Element => {
               lastName: signlastName,
               email: signEmail,
               password: signPassword,
+              orgId: signOrg,
             },
           });
 
           /* istanbul ignore next */
           if (signUpData) {
             toast.success(
-              role === 'admin'
-                ? 'Successfully Registered. Please wait until you will be approved.'
-                : 'Successfully registered. Please wait for admin to approve your request.',
+              t(role === 'admin' ? 'successfullyRegistered' : 'afterRegister'),
             );
             setShowTab('LOGIN');
             setSignFormState({
@@ -209,9 +242,10 @@ const loginPage = (): JSX.Element => {
               signEmail: '',
               signPassword: '',
               cPassword: '',
+              signOrg: '',
             });
           }
-        } catch (error: any) {
+        } catch (error) {
           /* istanbul ignore next */
           errorHandler(t, error);
         }
@@ -253,56 +287,78 @@ const loginPage = (): JSX.Element => {
 
       /* istanbul ignore next */
       if (loginData) {
+        const { login } = loginData;
+        const { user, appUserProfile } = login;
+        const isAdmin: boolean =
+          appUserProfile.isSuperAdmin || appUserProfile.adminFor.length !== 0;
+
+        if (role === 'admin' && !isAdmin) {
+          toast.warn(t('notAuthorised'));
+          return;
+        }
+        const loggedInUserId = user._id;
+
+        setItem('token', login.accessToken);
+        setItem('refreshToken', login.refreshToken);
+        setItem('IsLoggedIn', 'TRUE');
+        setItem('name', `${user.firstName} ${user.lastName}`);
+        setItem('email', user.email);
+        setItem('FirstName', user.firstName);
+        setItem('LastName', user.lastName);
+        setItem('UserImage', user.image);
+
         if (role === 'admin') {
-          if (
-            loginData.login.user.userType === 'SUPERADMIN' ||
-            (loginData.login.user.userType === 'ADMIN' &&
-              loginData.login.user.adminApproved === true)
-          ) {
-            setItem('token', loginData.login.accessToken);
-            setItem('refreshToken', loginData.login.refreshToken);
-            setItem('id', loginData.login.user._id);
-            setItem('IsLoggedIn', 'TRUE');
-            setItem('UserType', loginData.login.user.userType);
-          } else {
-            toast.warn(t('notAuthorised'));
-          }
+          setItem('id', loggedInUserId);
+          setItem('SuperAdmin', appUserProfile.isSuperAdmin);
+          setItem('AdminFor', appUserProfile.adminFor);
         } else {
-          setItem('token', loginData.login.accessToken);
-          setItem('refreshToken', loginData.login.refreshToken);
-          setItem('userId', loginData.login.user._id);
-          setItem('IsLoggedIn', 'TRUE');
-          setItem('UserType', loginData.login.user.userType);
+          setItem('userId', loggedInUserId);
         }
-        setItem(
-          'name',
-          `${loginData.login.user.firstName} ${loginData.login.user.lastName}`,
-        );
-        setItem('email', loginData.login.user.email);
-        setItem('FirstName', loginData.login.user.firstName);
-        setItem('LastName', loginData.login.user.lastName);
-        setItem('UserImage', loginData.login.user.image);
-        if (getItem('IsLoggedIn') == 'TRUE') {
-          navigate(role === 'admin' ? '/orglist' : '/user/organizations');
-        }
+
+        navigate(role === 'admin' ? '/orglist' : '/user/organizations');
       } else {
         toast.warn(t('notFound'));
       }
-    } catch (error: any) {
+    } catch (error) {
       /* istanbul ignore next */
       errorHandler(t, error);
     }
   };
 
-  if (componentLoader || loginLoading || signinLoading || recaptchaLoading) {
+  if (
+    componentLoader ||
+    loginLoading ||
+    signinLoading ||
+    recaptchaLoading ||
+    loading
+  ) {
     return <Loader />;
   }
-
-  const socialIconsList = socialMediaLinks.map(({ href, logo }, index) => (
-    <a key={index} href={href} target="_blank" rel="noopener noreferrer">
-      <img src={logo} />
-    </a>
-  ));
+  const socialIconsList = socialMediaLinks.map(({ href, logo, tag }, index) =>
+    data?.getCommunityData ? (
+      data.getCommunityData?.socialMediaUrls?.[tag] && (
+        <a
+          key={index}
+          href={data.getCommunityData?.socialMediaUrls?.[tag]}
+          target="_blank"
+          rel="noopener noreferrer"
+          data-testid="preLoginSocialMedia"
+        >
+          <img src={logo} />
+        </a>
+      )
+    ) : (
+      <a
+        key={index}
+        href={href}
+        target="_blank"
+        rel="noopener noreferrer"
+        data-testid="PalisadoesSocialMedia"
+      >
+        <img src={logo} />
+      </a>
+    ),
+  );
 
   return (
     <>
@@ -310,14 +366,33 @@ const loginPage = (): JSX.Element => {
         <Row className={styles.row}>
           <Col sm={0} md={6} lg={7} className={styles.left_portion}>
             <div className={styles.inner}>
-              <a
-                href="https://www.palisadoes.org/"
-                target="_blank"
-                rel="noopener noreferrer"
-              >
-                <PalisadoesLogo className={styles.palisadoes_logo} />
-                <p className="text-center">{t('fromPalisadoes')}</p>
-              </a>
+              {data?.getCommunityData ? (
+                <a
+                  href={data.getCommunityData.websiteLink}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className={`${styles.communityLogo}`}
+                >
+                  <img
+                    src={data.getCommunityData.logoUrl}
+                    alt="Community Logo"
+                    data-testid="preLoginLogo"
+                  />
+                  <p className="text-center">{data.getCommunityData.name}</p>
+                </a>
+              ) : (
+                <a
+                  href="https://www.palisadoes.org/"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                >
+                  <PalisadoesLogo
+                    className={styles.palisadoes_logo}
+                    data-testid="PalisadoesLogo"
+                  />
+                  <p className="text-center">{t('fromPalisadoes')}</p>
+                </a>
+              )}
             </div>
             <div className={styles.socialIcons}>{socialIconsList}</div>
           </Col>
@@ -717,6 +792,32 @@ const loginPage = (): JSX.Element => {
                           {t('Password_and_Confirm_password_mismatches.')}
                         </div>
                       )}
+                  </div>
+                  <div className="position-relative  my-2">
+                    <Form.Label>{t('selectOrg')}</Form.Label>
+                    <div className="position-relative">
+                      <Autocomplete
+                        disablePortal
+                        data-testid="selectOrg"
+                        onChange={(
+                          event,
+                          value: { label: string; id: string } | null,
+                        ) => {
+                          setSignFormState({
+                            ...signformState,
+                            signOrg: value?.id ?? '',
+                          });
+                        }}
+                        options={organizations}
+                        renderInput={(params) => (
+                          <TextField
+                            {...params}
+                            label="Organizations"
+                            className={styles.selectOrgText}
+                          />
+                        )}
+                      />
+                    </div>
                   </div>
                   {REACT_APP_USE_RECAPTCHA === 'yes' ? (
                     <div className="mt-3">

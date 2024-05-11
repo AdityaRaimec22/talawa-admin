@@ -37,9 +37,63 @@ export const ORGANIZATION_POST_LIST = gql`
             }
             createdAt
             likeCount
+            likedBy {
+              _id
+              firstName
+              lastName
+            }
             commentCount
-
+            comments {
+              _id
+              text
+              creator {
+                _id
+              }
+              createdAt
+              likeCount
+              likedBy {
+                _id
+              }
+            }
             pinned
+          }
+          cursor
+        }
+        pageInfo {
+          startCursor
+          endCursor
+          hasNextPage
+          hasPreviousPage
+        }
+        totalCount
+      }
+    }
+  }
+`;
+
+export const ORGANIZATION_ADVERTISEMENT_LIST = gql`
+  query Organizations(
+    $id: ID!
+    $after: String
+    $before: String
+    $first: Int
+    $last: Int
+  ) {
+    organizations(id: $id) {
+      _id
+      advertisements(
+        after: $after
+        before: $before
+        first: $first
+        last: $last
+      ) {
+        edges {
+          node {
+            _id
+            name
+            startDate
+            endDate
+            mediaUrl
           }
           cursor
         }
@@ -124,11 +178,29 @@ export const USER_ORGANIZATION_CONNECTION = gql`
 export const USER_JOINED_ORGANIZATIONS = gql`
   query UserJoinedOrganizations($id: ID!) {
     users(where: { id: $id }) {
-      joinedOrganizations {
-        _id
-        name
-        description
-        image
+      user {
+        joinedOrganizations {
+          _id
+          name
+          description
+          image
+          members {
+            _id
+          }
+          address {
+            city
+            countryCode
+            dependentLocality
+            line1
+            line2
+            postalCode
+            sortingCode
+            state
+          }
+          admins {
+            _id
+          }
+        }
       }
     }
   }
@@ -144,11 +216,29 @@ export const USER_JOINED_ORGANIZATIONS = gql`
 export const USER_CREATED_ORGANIZATIONS = gql`
   query UserCreatedOrganizations($id: ID!) {
     users(where: { id: $id }) {
-      createdOrganizations {
-        _id
-        name
-        description
-        image
+      appUserProfile {
+        createdOrganizations {
+          _id
+          name
+          description
+          image
+          members {
+            _id
+          }
+          address {
+            city
+            countryCode
+            dependentLocality
+            line1
+            line2
+            postalCode
+            sortingCode
+            state
+          }
+          admins {
+            _id
+          }
+        }
       }
     }
   }
@@ -193,6 +283,37 @@ export const ORGANIZATION_FUNDS = gql`
         isArchived
         isDefault
         createdAt
+      }
+    }
+  }
+`;
+
+/**
+ * GraphQL query to retrieve the list of venues for a specific organization.
+ *
+ * @param id - The ID of the organization for which venues are being retrieved.
+ * @returns The list of venues associated with the organization.
+ */
+export const VENUE_LIST = gql`
+  query GetVenueByOrgId(
+    $orgId: ID!
+    $first: Int
+    $orderBy: VenueOrderByInput
+    $where: VenueWhereInput
+  ) {
+    getVenueByOrgId(
+      orgId: $orgId
+      first: $first
+      orderBy: $orderBy
+      where: $where
+    ) {
+      _id
+      capacity
+      name
+      description
+      imageUrl
+      organization {
+        _id
       }
     }
   }
